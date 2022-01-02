@@ -543,6 +543,7 @@
 ("be64toh" endian.h)
 ("bind" sys/socket.h sys/types.h)
 ("bindresvport" sys/types.h netinet/in.h)
+("bool" stdbool.h)
 ("brk" unistd.h)
 ("bsd_signal" signal.h)
 ("bsearch" stdlib.h)
