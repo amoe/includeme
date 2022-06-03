@@ -47,7 +47,7 @@ def make_happy_list(out, syms):
     syms.sort(key=operator.itemgetter(0))
     out.write('(setq includeme! \'(\n')
     for name, hdrs in syms:
-        if isinstance(hdrs, basestring):
+        if isinstance(hdrs, str):
             out.write('("%s" . "%s")\n' % (name, hdrs))
         else:
             out.write('("%s" %s)\n' % (name, " ".join(hdrs)))
@@ -60,8 +60,10 @@ def get_mans(level=3, root='/usr/share/man'):
     for name in os.listdir(root):
         path = os.path.join(root, name)
         if path.endswith('.%d.gz' % (level)):
-            yield (path, gzip.open(path))
+            yield (path, gzip.open(path, mode='rt'))
         elif path.endswith('.%d' % (level)):
+            import pdb
+            pdb.set_trace()
             yield (path, open(path))
 
 
@@ -69,6 +71,7 @@ def parse_man(path, text):
     """Reads raw man page text and yields ``(func-name, [headers])`` pairs."""
     includes = set()
     for line in text:
+        import pdb
         if line.startswith('.B ') or line.startswith('.BR "#inc'):
             m = re.search('#include <(.*?)>', line)
             if m:
@@ -82,7 +85,7 @@ def parse_man(path, text):
             if m:
                 func = m.group(1)
                 if not includes:
-                    print >>sys.stderr, "no includes for", func, "in", path
+                    print("no includes for", func, "in", path, file=sys.stderr)
                     continue
                 yield func, set(includes)
         if 'DESCRIPTION' in line:
@@ -104,8 +107,10 @@ def main(cppdir):
         for func, includes in parse_man(path, text):
             if func in man_syms:
                 if includes != man_syms[func]:
-                    print >>sys.stderr, 'does %s have %r or %r?' % (
-                        func, man_syms[func], includes)
+                    print(
+                        'does %s have %r or %r?' % (func, man_syms[func], includes),
+                        file=sys.stderr
+                    )
                 continue
             man_syms[func] = includes
 
@@ -154,7 +159,7 @@ def main(cppdir):
     for link, syms in links.items():
         htmlfile = '%s/%s.html' % (htmldir, link)
         if not os.path.exists(htmlfile):
-            print >>sys.stderr, 'missing html:', htmlfile
+            print('missing html:', htmlfile, file=sys.stderr)
             continue
         html = open(htmlfile).read()
         m = re.search(r'Defined in header.+?;(.+?)&', html, re.I)
@@ -165,7 +170,7 @@ def main(cppdir):
             for sym in syms:
                 sym['header'] = header
         else:
-            print >>sys.stderr, 'no header found:', htmlfile
+            print('no header found:', htmlfile, file=sys.stderr)
 
     # Simplify down to `symbol: set(header)` and get rid of symbols for which
     # no header was found.
@@ -180,26 +185,24 @@ def main(cppdir):
                     c_syms[name[5:]] & set(shadows.keys())):
                     hdrs = set(shadows.get(hdr, hdr)
                                for hdr in c_syms[name[5:]])
-                    print >>sys.stderr, \
-                        'salvaging %s -> %s (from c)' % (name, hdrs)
+                    print('salvaging %s -> %s (from c)' % (name, hdrs), file=sys.stderr)
                     yield (name, hdrs)
                 elif (name.startswith('std::') and
                       name[5:] in man_syms and
                       man_syms[name[5:]] & set(shadows.keys())):
                     hdrs = set(shadows.get(hdr, hdr)
                                for hdr in man_syms[name[5:]])
-                    print >>sys.stderr, \
-                        'salvaging %s -> %s (from man)' % (name, hdrs)
+                    print('salvaging %s -> %s (from man)' % (name, hdrs), file=sys.stderr)
                     yield (name, hdrs)
                 else:
-                    print >>sys.stderr, 'discard %s symbol: %s' % (lang, name)
+                    print('discard %s symbol: %s' % (lang, name), file=sys.stderr)
     c_syms = dict(filter_syms('C', c_syms))
     cpp_syms = dict(filter_syms('C++', cpp_syms))
 
     # Display some countage.
-    print "len(c_syms) =", len(c_syms)
-    print "len(cpp_syms) =", len(cpp_syms)
-    print "len(man_syms) =", len(man_syms)
+    print("len(c_syms) =", len(c_syms))
+    print("len(cpp_syms) =", len(cpp_syms))
+    print("len(man_syms) =", len(man_syms))
 
     # Merge man symbols into C/C++ symbol indexes.
     for name, hdrs in man_syms.items():
@@ -209,14 +212,16 @@ def main(cppdir):
             cpp_syms[name] = set(shadows.get(hdr, hdr) for hdr in hdrs)
 
     # Decanonicalize the C++ symbol index.
-    for name, hdrs in cpp_syms.items()[:]:
+    cpp_syms_items = list(cpp_syms.items())
+    
+    for name, hdrs in cpp_syms_items:
         try:
             short_name = name[name.rindex('::') + 2:]
         except ValueError:
             pass
         else:
             if short_name in cpp_syms:
-                print >>sys.stderr, 'conflict', name
+                print('conflict', name, file=sys.stderr)
             else:
                 cpp_syms[short_name] = name
 
@@ -230,11 +235,12 @@ def main(cppdir):
     cpp_syms['std::wcerr'] = ['iostream']
     cpp_syms['std::wclog'] = ['iostream']
 
+    
     # Output a data structure for emacs.
     for name, syms in [('includeme-index-c', c_syms),
                        ('includeme-index-cpp', cpp_syms)]:
         out = open(name + '.el', 'w')
-        make_happy_list(out, syms.items())
+        make_happy_list(out, list(syms.items()))
 
 if __name__ == '__main__':
     main(*sys.argv[1:])
